@@ -31,7 +31,7 @@ create table if not exists products (
 );
 
 insert into products (slug, name, description)
-values ('pydent', 'PyDent', 'Dental clinic management software')
+values ('pydent', 'PyDent AI', 'Dental clinic management software')
 on conflict (slug) do nothing;
 
 -- Example for the future — when the next software ships, this is ALL the
@@ -109,6 +109,7 @@ create table if not exists messages (
 );
 
 -- Row level security: members only see their own workspace.
+alter table products enable row level security;
 alter table workspaces enable row level security;
 alter table workspace_members enable row level security;
 alter table lifecycle_stages enable row level security;
@@ -124,21 +125,32 @@ returns boolean language sql stable security definer as $$
   );
 $$;
 
+-- drop-then-create makes this script safe to run again at any time
+drop policy if exists "signed-in users read products" on products;
+create policy "signed-in users read products" on products
+  for select using (auth.role() = 'authenticated');
+
+drop policy if exists "members read workspace" on workspaces;
 create policy "members read workspace" on workspaces
   for select using (is_member(id));
 
+drop policy if exists "members read membership" on workspace_members;
 create policy "members read membership" on workspace_members
   for select using (is_member(workspace_id));
 
+drop policy if exists "members manage stages" on lifecycle_stages;
 create policy "members manage stages" on lifecycle_stages
   for all using (is_member(workspace_id));
 
+drop policy if exists "members manage contacts" on contacts;
 create policy "members manage contacts" on contacts
   for all using (is_member(workspace_id));
 
+drop policy if exists "members manage conversations" on conversations;
 create policy "members manage conversations" on conversations
   for all using (is_member(workspace_id));
 
+drop policy if exists "members manage messages" on messages;
 create policy "members manage messages" on messages
   for all using (
     exists (
