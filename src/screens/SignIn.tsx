@@ -33,33 +33,34 @@ export function SignIn() {
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
-        padding: '40px 26px calc(30px + var(--safe-bottom))'
+        padding: '44px 26px calc(30px + var(--safe-bottom))'
       }}
     >
-      <div style={{ marginBottom: 34 }}>
+      <div style={{ marginBottom: 30 }}>
         <div
           style={{
-            width: 76,
-            height: 76,
-            borderRadius: 24,
-            background: 'linear-gradient(160deg,#2f9bff,var(--blue) 55%,var(--blue-deep) 140%)',
+            width: 58,
+            height: 58,
+            borderRadius: 18,
+            background: 'var(--blue)',
             display: 'grid',
             placeItems: 'center',
             color: '#fff',
-            fontSize: 38,
+            fontSize: 27,
             fontWeight: 800,
-            boxShadow: '0 14px 34px rgba(10,132,255,.4)',
-            marginBottom: 22
+            letterSpacing: '-0.02em',
+            boxShadow: '0 10px 26px rgba(31,107,255,.32)',
+            marginBottom: 20
           }}
         >
           R
         </div>
-        <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-.5px' }}>
-          Welcome to Responde 👋
+        <h1 style={{ fontSize: 25, fontWeight: 700, letterSpacing: '-0.03em' }}>
+          Welcome to Responde
         </h1>
-        <p style={{ color: 'var(--ink-2)', marginTop: 8, fontSize: 15.5, lineHeight: 1.45 }}>
-          Sign in with the same account you use in <b>PyDent</b> or any other LHDM clinic
-          software. Your workspace, channels and contacts come with you.
+        <p style={{ color: 'var(--ink-2)', marginTop: 7, fontSize: 14, lineHeight: 1.55 }}>
+          Sign in with the account you already use in <b>PyDent AI</b> or any other LHDM
+          software. Your workspace, channels and customers come with you.
         </p>
       </div>
 
@@ -94,12 +95,12 @@ export function SignIn() {
               onClick={() => setShowPw((v) => !v)}
               style={{
                 position: 'absolute',
-                right: 12,
+                right: 14,
                 top: '50%',
                 transform: 'translateY(-50%)',
                 color: 'var(--blue)',
-                fontWeight: 700,
-                fontSize: 13
+                fontWeight: 600,
+                fontSize: 12.5
               }}
             >
               {showPw ? 'Hide' : 'Show'}
@@ -108,7 +109,7 @@ export function SignIn() {
         </label>
 
         <label className="field">
-          <span>Workspace name or ID (optional)</span>
+          <span>Workspace (optional)</span>
           <input
             placeholder="e.g. Bright Smile Dental"
             value={workspace}
@@ -116,31 +117,31 @@ export function SignIn() {
           />
         </label>
 
-        <button className="btn primary" type="submit" disabled={busy}>
-          {busy ? 'Signing in…' : 'Sign In'}
+        <button className="btn primary" type="submit" disabled={busy} style={{ marginTop: 4 }}>
+          {busy ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
 
       <button
         className="btn"
-        style={{ color: 'var(--blue)', fontWeight: 600, marginTop: 6 }}
+        style={{ color: 'var(--blue)', fontWeight: 600, marginTop: 4, fontSize: 14 }}
         type="button"
       >
-        Reset Password
+        Reset password
       </button>
 
       <p
         style={{
           textAlign: 'center',
           color: 'var(--ink-3)',
-          fontSize: 13,
-          marginTop: 26,
-          lineHeight: 1.5
+          fontSize: 12,
+          marginTop: 24,
+          lineHeight: 1.55
         }}
       >
         {supabaseConfigured
           ? 'Connected to your clinic workspace.'
-          : 'Demo mode — no backend connected yet, so any email and password opens the sample PyDent workspace.'}
+          : 'Demo mode — no backend connected yet, so any email and password opens the sample workspace.'}
         <br />
         To sign up, create an account in your clinic software first.
       </p>

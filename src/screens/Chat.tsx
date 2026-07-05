@@ -166,10 +166,20 @@ export function Chat() {
         >
           <Avatar name={contact.name} color={contact.color} channel={contact.channel} small />
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: '-.2px' }}>
+            <div style={{ fontWeight: 700, fontSize: 15.5, letterSpacing: '-0.02em' }}>
               {contact.name}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--ink-2)', display: 'flex', gap: 6 }}>
+            <div
+              style={{
+                fontSize: 11.5,
+                color: 'var(--ink-2)',
+                display: 'flex',
+                gap: 5,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}
+            >
               {channelName[contact.channel]}
               {stage && (
                 <span style={{ color: stage.color, fontWeight: 700 }}>· {stage.name}</span>
@@ -196,18 +206,17 @@ export function Chat() {
       </header>
 
       <button
-        className="glass"
+        className="card"
         style={{
-          margin: '10px 14px 0',
+          margin: '10px 16px 0',
           padding: '10px 14px',
-          borderRadius: 16,
+          borderRadius: 14,
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          fontSize: 13.5,
+          fontSize: 12.5,
           fontWeight: 600,
-          color: 'var(--ink-2)',
-          boxShadow: 'var(--shadow-soft)'
+          color: 'var(--ink-2)'
         }}
         onClick={() => setSheet('assign')}
       >
