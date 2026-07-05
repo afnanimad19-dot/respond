@@ -48,6 +48,33 @@ create table if not exists workspaces (
   created_at timestamptz not null default now()
 );
 
+-- Upgrade path: if `workspaces` was created by an older version of this
+-- script (which had a free-text source_app column and no product_slug),
+-- add the new column and carry the old values over.
+alter table workspaces add column if not exists product_slug text not null default 'pydent';
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'workspaces' and column_name = 'source_app'
+  ) then
+    update workspaces set product_slug = lower(source_app) where source_app is not null;
+    alter table workspaces drop column source_app;
+  end if;
+end $$;
+
+-- Any slug already used by a workspace must exist in the registry before
+-- the foreign key is (re)attached.
+insert into products (slug, name)
+select distinct product_slug, initcap(product_slug) from workspaces
+on conflict (slug) do nothing;
+
+alter table workspaces drop constraint if exists workspaces_product_slug_fkey;
+alter table workspaces
+  add constraint workspaces_product_slug_fkey
+  foreign key (product_slug) references products (slug);
+
 -- Kept for the mobile app, which selects `source_app`.
 create or replace view workspace_details as
   select w.id, w.name, w.product_slug, p.name as source_app, w.created_at
