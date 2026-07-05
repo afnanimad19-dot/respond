@@ -1,18 +1,58 @@
 -- Responde — shared Supabase schema
 -- ---------------------------------
 -- Responde signs users in against the SAME Supabase project used by PyDent
--- (and future LHDM clinic products). auth.users is shared, so the same
+-- (and every future LHDM product). auth.users is shared, so the same
 -- email + password works everywhere. These tables let Responde match a
 -- signed-in user to their workspace and load the omnichannel inbox.
+--
+-- HOW MULTI-PRODUCT WORKS
+-- -----------------------
+-- Do NOT create a separate set of tables per software. There is ONE
+-- `products` registry, and every workspace points at the product it came
+-- from. Onboarding a brand-new software you build later is a single row:
+--
+--   insert into products (slug, name) values ('pyhealth', 'PyHealth');
+--
+-- Every product you build must create its accounts in THIS Supabase
+-- project's auth (supabase.auth.signUp from PyDent, PyHealth, ...). Then:
+--   * the same email + password works in the product AND in Responde;
+--   * when the product creates a clinic/company, it inserts one row in
+--     `workspaces` with its own product_slug and one row per staff member
+--     in `workspace_members`;
+--   * Responde reads workspace_members for the signed-in user and instantly
+--     knows which software each workspace came from.
 
--- Workspaces come from the product the customer bought (PyDent, health
--- clinic software, ...). source_app records which one.
+-- Registry of every software we build. One row per product, ever.
+create table if not exists products (
+  slug text primary key,            -- short id used in code, e.g. 'pydent'
+  name text not null,               -- display name, e.g. 'PyDent'
+  description text,
+  created_at timestamptz not null default now()
+);
+
+insert into products (slug, name, description)
+values ('pydent', 'PyDent', 'Dental clinic management software')
+on conflict (slug) do nothing;
+
+-- Example for the future — when the next software ships, this is ALL the
+-- schema work it needs:
+-- insert into products (slug, name, description)
+-- values ('pyhealth', 'PyHealth', 'Health clinic management software');
+
+-- Workspaces come from the product the customer bought. product_slug
+-- records which one (the app reads it as source_app).
 create table if not exists workspaces (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  source_app text not null default 'pydent',
+  product_slug text not null default 'pydent' references products (slug),
   created_at timestamptz not null default now()
 );
+
+-- Kept for the mobile app, which selects `source_app`.
+create or replace view workspace_details as
+  select w.id, w.name, w.product_slug, p.name as source_app, w.created_at
+  from workspaces w
+  join products p on p.slug = w.product_slug;
 
 create table if not exists workspace_members (
   workspace_id uuid not null references workspaces (id) on delete cascade,

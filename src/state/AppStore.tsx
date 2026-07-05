@@ -104,9 +104,11 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
         if (error) return error.message;
 
         // Match the workspace the user typed against their memberships.
+        // Each workspace carries the product it came from (PyDent, PyHealth,
+        // ...) via products.slug — one shared schema for every software.
         const { data: memberships } = await supabase
           .from('workspace_members')
-          .select('workspace_id, role, workspaces ( id, name, source_app )')
+          .select('workspace_id, role, workspaces ( id, name, product_slug, products ( name ) )')
           .eq('user_id', data.user.id);
 
         const rows = (memberships ?? []) as any[];
@@ -130,7 +132,8 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
           workspace: {
             id: match.workspaces.id,
             name: match.workspaces.name,
-            sourceApp: match.workspaces.source_app ?? 'PyDent'
+            sourceApp:
+              match.workspaces.products?.name ?? match.workspaces.product_slug ?? 'PyDent'
           },
           demo: false
         };
