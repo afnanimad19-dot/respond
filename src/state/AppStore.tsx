@@ -12,8 +12,11 @@ import {
   ConversationStatus,
   LifecycleStage,
   Message,
+  MessageTemplate,
+  NotificationItem,
   Role,
   Session,
+  Snippet,
   TeamMember
 } from '../lib/types';
 import { supabase, supabaseConfigured } from '../lib/supabase';
@@ -22,7 +25,10 @@ import {
   mockConversations,
   mockLifecycle,
   mockMessages,
-  mockTeam
+  mockNotifications,
+  mockSnippets,
+  mockTeam,
+  mockTemplates
 } from '../data/mock';
 
 const SESSION_KEY = 'responde.session';
@@ -46,13 +52,27 @@ interface Store {
   messagesFor: (conversationId: string) => Message[];
   lastMessageFor: (conversationId: string) => Message | undefined;
 
-  sendMessage: (conversationId: string, text: string, kind: 'text' | 'comment', mentions?: string[]) => void;
+  sendMessage: (
+    conversationId: string,
+    text: string,
+    kind: 'text' | 'comment' | 'audio' | 'file',
+    mentions?: string[]
+  ) => void;
   markRead: (conversationId: string) => void;
   setStatus: (conversationId: string, status: ConversationStatus) => void;
   assign: (conversationId: string, memberId: string | null) => void;
   setContactStage: (contactId: string, stageId: string | null) => void;
+  advanceStage: (contactId: string) => void;
 
-  addStage: (name: string, color: string, description?: string) => void;
+  snippets: Snippet[];
+  templates: MessageTemplate[];
+  addTemplate: (name: string, language: string, body: string) => void;
+
+  notifications: NotificationItem[];
+  archiveNotification: (id: string) => void;
+  archiveAllNotifications: () => void;
+
+  addStage: (name: string, color: string, description?: string, emoji?: string) => void;
   updateStage: (id: string, patch: Partial<LifecycleStage>) => void;
   removeStage: (id: string) => void;
   moveStage: (id: string, dir: -1 | 1) => void;
@@ -76,6 +96,9 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [contacts, setContacts] = useState<Contact[]>(mockContacts);
   const [conversations, setConversations] = useState<Conversation[]>(mockConversations);
   const [messages, setMessages] = useState<Message[]>(mockMessages);
+  const [templates, setTemplates] = useState<MessageTemplate[]>(mockTemplates);
+  const [notifications, setNotifications] = useState<NotificationItem[]>(mockNotifications);
+  const snippets = mockSnippets;
 
   useEffect(() => {
     const raw = localStorage.getItem(SESSION_KEY);
@@ -196,7 +219,12 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   );
 
   const sendMessage = useCallback(
-    (conversationId: string, text: string, kind: 'text' | 'comment', mentions: string[] = []) => {
+    (
+      conversationId: string,
+      text: string,
+      kind: 'text' | 'comment' | 'audio' | 'file',
+      mentions: string[] = []
+    ) => {
       const at = new Date().toISOString();
       setMessages((prev) => [
         ...prev,
@@ -213,8 +241,29 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       setConversations((prev) =>
         prev.map((c) => (c.id === conversationId ? { ...c, lastMessageAt: at } : c))
       );
+      // @-mentions inside internal comments raise a notification for the
+      // mentioned teammates.
+      if (kind === 'comment' && mentions.length) {
+        const convo = conversations.find((c) => c.id === conversationId);
+        const contact = convo ? contacts.find((x) => x.id === convo.contactId) : undefined;
+        const who = session?.name ?? 'A teammate';
+        setNotifications((prev) => [
+          ...mentions.map((memberId) => ({
+            id: nextId('n'),
+            kind: 'mention' as const,
+            title: `${who} mentioned ${
+              memberId === (session?.userId ?? 'me') ? 'you' : 'a teammate'
+            } in ${contact?.name ?? 'a conversation'}`,
+            body: text,
+            at,
+            archived: false,
+            conversationId
+          })),
+          ...prev
+        ]);
+      }
     },
-    [session]
+    [session, conversations, contacts]
   );
 
   const markRead = useCallback((conversationId: string) => {
@@ -241,9 +290,43 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
-  const addStage = useCallback((name: string, color: string, description?: string) => {
-    setLifecycle((prev) => [...prev, { id: nextId('stage'), name, color, description }]);
+  const advanceStage = useCallback(
+    (contactId: string) => {
+      setContacts((prev) =>
+        prev.map((c) => {
+          if (c.id !== contactId) return c;
+          const i = lifecycle.findIndex((s) => s.id === c.lifecycleStageId);
+          const next = lifecycle[i + 1] ?? lifecycle[0];
+          return { ...c, lifecycleStageId: next?.id ?? null };
+        })
+      );
+    },
+    [lifecycle]
+  );
+
+  const addTemplate = useCallback((name: string, language: string, body: string) => {
+    setTemplates((prev) => [
+      ...prev,
+      { id: nextId('tpl'), name, language, body, status: 'pending' }
+    ]);
   }, []);
+
+  const archiveNotification = useCallback((id: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, archived: true } : n))
+    );
+  }, []);
+
+  const archiveAllNotifications = useCallback(() => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, archived: true })));
+  }, []);
+
+  const addStage = useCallback(
+    (name: string, color: string, description?: string, emoji?: string) => {
+      setLifecycle((prev) => [...prev, { id: nextId('stage'), name, color, description, emoji }]);
+    },
+    []
+  );
 
   const updateStage = useCallback((id: string, patch: Partial<LifecycleStage>) => {
     setLifecycle((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
@@ -321,6 +404,13 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       setStatus,
       assign,
       setContactStage,
+      advanceStage,
+      snippets,
+      templates,
+      addTemplate,
+      notifications,
+      archiveNotification,
+      archiveAllNotifications,
       addStage,
       updateStage,
       removeStage,
@@ -349,6 +439,13 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       setStatus,
       assign,
       setContactStage,
+      advanceStage,
+      snippets,
+      templates,
+      addTemplate,
+      notifications,
+      archiveNotification,
+      archiveAllNotifications,
       addStage,
       updateStage,
       removeStage,
@@ -385,4 +482,14 @@ export function timeLabel(iso: string): string {
 
 export function clockLabel(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+export function agoLabel(iso: string): string {
+  const d = new Date(iso);
+  const mins = Math.floor((Date.now() - d.getTime()) / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  return `${d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })} at ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }

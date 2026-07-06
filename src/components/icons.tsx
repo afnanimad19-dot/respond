@@ -148,6 +148,63 @@ export const LogoutIcon = (p: P) => (
   </svg>
 );
 
+export const MenuIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 6h16M4 12h16M4 18h10" />
+  </svg>
+);
+
+export const MicIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="9" y="2" width="6" height="12" rx="3" />
+    <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4" />
+  </svg>
+);
+
+export const ClipIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="m21.4 11.1-8.9 8.9a5.5 5.5 0 0 1-7.8-7.8l8.9-8.9a3.7 3.7 0 0 1 5.2 5.2l-8.9 8.9a1.8 1.8 0 0 1-2.6-2.6l8.2-8.2" />
+  </svg>
+);
+
+export const WandIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="m15 4 1 2 2 1-2 1-1 2-1-2-2-1 2-1zM6 12l.8 1.6L8.4 14l-1.6.8L6 16.4l-.8-1.6-1.6-.8 1.6-.4zM13.5 10.5 3.8 20.2a1.5 1.5 0 0 0 2.1 2.1l9.7-9.7zM19 13l.7 1.3 1.3.7-1.3.7L19 17l-.7-1.3-1.3-.7 1.3-.7z" />
+  </svg>
+);
+
+export const VarIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="m8 6-5 6 5 6M16 6l5 6-5 6" />
+  </svg>
+);
+
+export const SnippetIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 6h16M4 10h16M4 14h9M4 18h6" />
+  </svg>
+);
+
+export const XIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </svg>
+);
+
+export const ClockIcon = (p: P) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
+  </svg>
+);
+
+export const MegaphoneIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="m3 11 14-6v14L3 13v-2z" />
+    <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6M17 8.5a4 4 0 0 1 0 7" />
+  </svg>
+);
+
 // ---- channel logos (filled, white) ----------------------------------------
 
 export const WhatsAppLogo = (p: P) => (

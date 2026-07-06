@@ -97,9 +97,12 @@ create table if not exists lifecycle_stages (
   workspace_id uuid not null references workspaces (id) on delete cascade,
   name text not null,
   color text not null default '#0A84FF',
+  emoji text,
   description text,
   position int not null default 0
 );
+
+alter table lifecycle_stages add column if not exists emoji text;
 
 create table if not exists contacts (
   id uuid primary key default gen_random_uuid(),
@@ -112,6 +115,11 @@ create table if not exists contacts (
   note text,
   created_at timestamptz not null default now()
 );
+
+-- Ad attribution: which ad brought this lead in (Meta Click Ads, TikTok...).
+alter table contacts add column if not exists ad_platform text;
+alter table contacts add column if not exists ad_name text;
+alter table contacts add column if not exists ad_campaign text;
 
 create table if not exists conversations (
   id uuid primary key default gen_random_uuid(),
@@ -135,8 +143,47 @@ create table if not exists messages (
   created_at timestamptz not null default now()
 );
 
+-- Saved '/' snippets, shared inside a workspace.
+create table if not exists snippets (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references workspaces (id) on delete cascade,
+  shortcut text not null,
+  body text not null,
+  created_at timestamptz not null default now()
+);
+
+-- WhatsApp message templates. status starts 'pending' and flips to
+-- 'approved' / 'rejected' when Meta reviews the template through the
+-- WhatsApp Business API. Only approved templates can be sent.
+create table if not exists message_templates (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references workspaces (id) on delete cascade,
+  name text not null,
+  language text not null default 'en',
+  body text not null,
+  status text not null default 'pending' check (status in ('pending','approved','rejected')),
+  created_at timestamptz not null default now()
+);
+
+-- Per-user notifications (mentions, assignments, system events). Each user
+-- only ever sees their OWN rows — enforced by RLS below.
+create table if not exists notifications (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references workspaces (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  kind text not null default 'system' check (kind in ('mention','system','assignment')),
+  title text not null,
+  body text,
+  conversation_id uuid references conversations (id) on delete set null,
+  archived boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
 -- Row level security: members only see their own workspace.
 alter table products enable row level security;
+alter table snippets enable row level security;
+alter table message_templates enable row level security;
+alter table notifications enable row level security;
 alter table workspaces enable row level security;
 alter table workspace_members enable row level security;
 alter table lifecycle_stages enable row level security;
@@ -176,6 +223,20 @@ create policy "members manage contacts" on contacts
 drop policy if exists "members manage conversations" on conversations;
 create policy "members manage conversations" on conversations
   for all using (is_member(workspace_id));
+
+drop policy if exists "members manage snippets" on snippets;
+create policy "members manage snippets" on snippets
+  for all using (is_member(workspace_id));
+
+drop policy if exists "members manage templates" on message_templates;
+create policy "members manage templates" on message_templates
+  for all using (is_member(workspace_id));
+
+-- Privacy: notifications are PER USER — even teammates in the same
+-- workspace cannot read each other's notifications.
+drop policy if exists "own notifications only" on notifications;
+create policy "own notifications only" on notifications
+  for all using (user_id = auth.uid());
 
 drop policy if exists "members manage messages" on messages;
 create policy "members manage messages" on messages

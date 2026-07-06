@@ -20,8 +20,20 @@ that software, and their workspace, team, contacts and conversations follow them
   box** and the composer turns **orange**: whatever you type is visible only to
   your team, never to the patient. Type `@` to tag a teammate (they get a
   notification), then tap the button again to switch back to normal replies.
-- **Shortcuts** — type `/` in the composer to insert canned replies
-  (`/welcome`, `/hours`, `/book`, `/thanks`).
+- **Power composer** — toolbar with: AI Prompts (change tone, fix grammar,
+  simplify — demo transforms until the AI backend is connected), voice-note
+  recording, attachments (camera / gallery / device / library), `/` snippets,
+  `$` variables (`$name`, `$firstName`, `$phone`, `$agent`, `$workspace` —
+  resolved on send), and **WhatsApp templates** with Meta approval status
+  (only `approved` templates can be sent; new ones are submitted as
+  `pending`). Channel selector ("WhatsApp Business ▾") above the input.
+- **Ad attribution** — leads that arrive from an ad (e.g. Meta Click Ads,
+  Arabic creatives render RTL correctly) show a banner in the chat with the
+  platform, campaign and ad name, plus workflow event lines in the timeline.
+- **Inbox drawer** — All / Mine / Unassigned counts, lifecycle stages with
+  emojis and counts, and per-teammate filters.
+- **Notifications** — New / Archived / All filters, Archive All, Recent and
+  Older sections; mentions raise notifications automatically.
 - **Lifecycle** — editable pipeline stages (New Lead → Contacted → Interested →
   Booked → Lost out of the box). Add, rename, recolor, reorder or delete stages
   and move any contact between them straight from the chat header.

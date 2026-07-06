@@ -12,11 +12,13 @@ export function Lifecycle() {
   const [editing, setEditing] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [emoji, setEmoji] = useState('');
   const [color, setColor] = useState(COLORS[0]);
 
   const openAdd = () => {
     setName('');
     setDescription('');
+    setEmoji('');
     setColor(COLORS[store.lifecycle.length % COLORS.length]);
     setAdding(true);
     setEditing(null);
@@ -27,6 +29,7 @@ export function Lifecycle() {
     if (!s) return;
     setName(s.name);
     setDescription(s.description ?? '');
+    setEmoji(s.emoji ?? '');
     setColor(s.color);
     setEditing(id);
     setAdding(false);
@@ -35,12 +38,13 @@ export function Lifecycle() {
   const save = () => {
     if (!name.trim()) return;
     if (adding) {
-      store.addStage(name.trim(), color, description.trim() || undefined);
+      store.addStage(name.trim(), color, description.trim() || undefined, emoji.trim() || undefined);
     } else if (editing) {
       store.updateStage(editing, {
         name: name.trim(),
         color,
-        description: description.trim() || undefined
+        description: description.trim() || undefined,
+        emoji: emoji.trim() || undefined
       });
     }
     setAdding(false);
@@ -73,15 +77,21 @@ export function Lifecycle() {
         <div className="card" style={{ overflow: 'hidden' }}>
           {store.lifecycle.map((s, i) => (
             <div key={s.id} className="list-row">
-              <span
-                style={{
-                  width: 16,
-                  height: 16,
-                  borderRadius: '50%',
-                  background: s.color,
-                  flexShrink: 0
-                }}
-              />
+              {s.emoji ? (
+                <span style={{ fontSize: 17, width: 20, textAlign: 'center', flexShrink: 0 }}>
+                  {s.emoji}
+                </span>
+              ) : (
+                <span
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: '50%',
+                    background: s.color,
+                    flexShrink: 0
+                  }}
+                />
+              )}
               <button className="grow" style={{ textAlign: 'left' }} onClick={() => openEdit(s.id)}>
                 <b>{s.name}</b>
                 <div className="sub">
@@ -133,6 +143,15 @@ export function Lifecycle() {
                 placeholder="e.g. Interested"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Emoji (optional)</span>
+              <input
+                placeholder="e.g. 🔥"
+                value={emoji}
+                maxLength={4}
+                onChange={(e) => setEmoji(e.target.value)}
               />
             </label>
             <label className="field">

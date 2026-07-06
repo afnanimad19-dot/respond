@@ -46,11 +46,47 @@ export const mockTeam: TeamMember[] = [
 // ---- Lifecycle -----------------------------------------------------------
 
 export const mockLifecycle: LifecycleStage[] = [
-  { id: 'new', name: 'New Lead', color: '#0A84FF', description: 'Just reached out, not qualified yet' },
-  { id: 'contacted', name: 'Contacted', color: '#30B0C7', description: 'We replied and are in conversation' },
-  { id: 'interested', name: 'Interested', color: '#FF9F0A', description: 'Showing buying intent, still deciding' },
-  { id: 'booked', name: 'Booked', color: '#34C759', description: 'Appointment or purchase confirmed' },
-  { id: 'lost', name: 'Lost', color: '#8E8E93', description: 'Not moving forward for now' }
+  { id: 'new', name: 'New Lead', color: '#1F6BFF', emoji: '🧑‍💼', description: 'Just reached out, not qualified yet' },
+  { id: 'contacted', name: 'Contacted', color: '#17A2B8', emoji: '💬', description: 'We replied and are in conversation' },
+  { id: 'interested', name: 'Hot Lead', color: '#F79009', emoji: '🔥', description: 'Showing buying intent, still deciding' },
+  { id: 'booked', name: 'Converted', color: '#12B76A', emoji: '🤩', description: 'Appointment or purchase confirmed' },
+  { id: 'lost', name: 'No Response', color: '#98A2B3', emoji: '😐', description: 'Not moving forward for now' }
+];
+
+// ---- Snippets ('/' in the composer) ---------------------------------------
+
+export const mockSnippets = [
+  { shortcut: '/welcome', text: 'Hi! 👋 Thanks for reaching out to us. How can I help you today?' },
+  { shortcut: '/hours', text: 'Our clinic is open Monday–Saturday, 9:00am to 7:00pm.' },
+  { shortcut: '/book', text: "I'd love to get you booked in! What day and time works best for you, $firstName?" },
+  { shortcut: '/location', text: 'We are located in Sharjah — I can send you the map pin if you like.' },
+  { shortcut: '/thanks', text: 'Thank you so much, $firstName! Have a lovely day. 😊' }
+];
+
+// ---- WhatsApp templates (need Meta approval before they can be sent) ------
+
+export const mockTemplates = [
+  {
+    id: 'tpl1',
+    name: 'welcome_arabic',
+    language: 'ar',
+    body: 'مرحباً $name! شكراً لتواصلك معنا. كيف يمكننا مساعدتك اليوم؟',
+    status: 'approved' as const
+  },
+  {
+    id: 'tpl2',
+    name: 'appointment_reminder',
+    language: 'en',
+    body: 'Hi $firstName, this is a reminder of your appointment at $workspace. Reply YES to confirm.',
+    status: 'approved' as const
+  },
+  {
+    id: 'tpl3',
+    name: 'summer_promo',
+    language: 'en',
+    body: 'Hi $firstName! Our summer offer is live — 20% off all treatments this month. 🦷',
+    status: 'pending' as const
+  }
 ];
 
 // ---- Contacts ------------------------------------------------------------
@@ -113,6 +149,19 @@ export const mockContacts: Contact[] = [
     channel: 'instagram',
     color: '#5E9BF7',
     lifecycleStageId: 'interested'
+  },
+  {
+    id: 'c8',
+    name: 'Khadija Salim',
+    phone: '+971 56 555 0190',
+    channel: 'whatsapp',
+    color: '#E1548C',
+    lifecycleStageId: 'new',
+    adSource: {
+      platform: 'Meta · Click Ads',
+      adName: 'إعلان العلاج الطبيعي — آلام الرقبة',
+      campaign: 'Click Ads - Physio'
+    }
   }
 ];
 
@@ -129,7 +178,8 @@ export const mockConversations: Conversation[] = [
   { id: 'v4', contactId: 'c4', status: 'closed', assigneeId: 'me', unread: 0, lastMessageAt: days(1) },
   { id: 'v5', contactId: 'c5', status: 'open', assigneeId: null, unread: 0, lastMessageAt: days(2) },
   { id: 'v6', contactId: 'c6', status: 'snoozed', assigneeId: 'omar', unread: 0, lastMessageAt: days(3) },
-  { id: 'v7', contactId: 'c7', status: 'open', assigneeId: 'me', unread: 0, lastMessageAt: mins(4) }
+  { id: 'v7', contactId: 'c7', status: 'open', assigneeId: 'me', unread: 0, lastMessageAt: mins(4) },
+  { id: 'v8', contactId: 'c8', status: 'open', assigneeId: 'omar', unread: 1, lastMessageAt: mins(2) }
 ];
 
 // ---- Messages --------------------------------------------------------------
@@ -179,5 +229,69 @@ export const mockMessages: Message[] = [
     from: 'me',
     text: "Hi Edwin! I'd be happy to help you with that. I'll send you a Calendly link where you can select the time that works best for you.",
     at: mins(4)
+  },
+
+  // Khadija — came in through the Arabic physio Click Ad (like respond.io
+  // workflow events)
+  {
+    id: 'm19',
+    conversationId: 'v8',
+    kind: 'text',
+    from: 'contact',
+    text: 'يساعدك أخصائيو العلاج الطبيعي لدينا على تحديد سبب المشكلة ووضع خطة علاج مخصصة لتخفيف الألم وتحسين الحركة.\n\n✅ تخفيف آلام الرقبة\n✅ تمارين تصحيح القوام\n✅ تحسين المرونة والحركة',
+    at: mins(40)
+  },
+  { id: 'm20', conversationId: 'v8', kind: 'text', from: 'contact', text: 'Hello! Can I get more info on this?', at: mins(38) },
+  { id: 'm21', conversationId: 'v8', kind: 'event', from: 'contact', text: 'Lifecycle Stage New Lead added', at: mins(37) },
+  { id: 'm22', conversationId: 'v8', kind: 'event', from: 'contact', text: 'Workflow Send Data to Message - Click Ads - Physio started', at: mins(37) },
+  { id: 'm23', conversationId: 'v8', kind: 'text', from: 'me', text: 'Hi 👋', at: mins(36) },
+  { id: 'm24', conversationId: 'v8', kind: 'event', from: 'contact', text: 'Assigned to Omar Khalil by Workflow Send Data to Message - Click Ads - Physio', at: mins(36) },
+  { id: 'm25', conversationId: 'v8', kind: 'event', from: 'contact', text: 'Workflow Send Data to Message - Click Ads - Physio ended', at: mins(35) },
+  { id: 'm26', conversationId: 'v8', kind: 'text', from: 'contact', text: 'You came to Sharjah and other', at: mins(2) }
+];
+
+// ---- Notifications ---------------------------------------------------------
+
+export const mockNotifications = [
+  {
+    id: 'n1',
+    kind: 'system' as const,
+    title: 'Knowledge source (Salwaty Website) added',
+    at: mins(180),
+    archived: false
+  },
+  {
+    id: 'n2',
+    kind: 'mention' as const,
+    title: 'Dr. Sara Haddad mentioned you in Kara Finley',
+    body: '@Amanda Low Tuesday 10:30am works. Book her in 👍',
+    at: mins(12),
+    archived: false,
+    conversationId: 'v1'
+  },
+  {
+    id: 'n3',
+    kind: 'system' as const,
+    title: 'Knowledge source (Salwaty Website) added',
+    at: days(7),
+    archived: false
+  },
+  {
+    id: 'n4',
+    kind: 'assignment' as const,
+    title: 'Workflow assigned Khadija Salim to Omar Khalil',
+    body: 'Workflow Send Data to Message - Click Ads - Physio',
+    at: mins(36),
+    archived: false,
+    conversationId: 'v8'
+  },
+  {
+    id: 'n5',
+    kind: 'mention' as const,
+    title: 'Omar Khalil mentioned you in Hussein Baashen',
+    body: '@Amanda Low no answer on the mobile — it is switched off',
+    at: days(9),
+    archived: true,
+    conversationId: 'v3'
   }
 ];

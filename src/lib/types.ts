@@ -26,7 +26,39 @@ export interface LifecycleStage {
   id: string;
   name: string;
   color: string;
+  emoji?: string;
   description?: string;
+}
+
+/** Which ad brought this lead in (Meta Click Ads, TikTok, ...) */
+export interface AdSource {
+  platform: string;
+  adName: string;
+  campaign?: string;
+}
+
+export interface Snippet {
+  shortcut: string;
+  text: string;
+}
+
+/** WhatsApp message template — must be approved by Meta before sending. */
+export interface MessageTemplate {
+  id: string;
+  name: string;
+  language: string;
+  body: string;
+  status: 'approved' | 'pending' | 'rejected';
+}
+
+export interface NotificationItem {
+  id: string;
+  kind: 'mention' | 'system' | 'assignment';
+  title: string;
+  body?: string;
+  at: string;
+  archived: boolean;
+  conversationId?: string;
 }
 
 export interface Contact {
@@ -38,6 +70,7 @@ export interface Contact {
   color: string;
   lifecycleStageId: string | null;
   note?: string;
+  adSource?: AdSource;
 }
 
 export type MessageKind = 'text' | 'comment' | 'event' | 'audio' | 'file' | 'unsupported';
