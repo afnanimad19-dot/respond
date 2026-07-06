@@ -81,6 +81,33 @@ create or replace view workspace_details as
   from workspaces w
   join products p on p.slug = w.product_slug;
 
+-- Display profile for every user (name, avatar color, presence). Created
+-- automatically when the account signs up in ANY LHDM product.
+create table if not exists profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  name text not null default '',
+  color text not null default '#1F6BFF',
+  online boolean not null default false,
+  updated_at timestamptz not null default now()
+);
+
+create or replace function handle_new_user()
+returns trigger language plpgsql security definer as $$
+begin
+  insert into profiles (id, name)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data ->> 'name', split_part(new.email, '@', 1))
+  )
+  on conflict (id) do nothing;
+  return new;
+end $$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function handle_new_user();
+
 create table if not exists workspace_members (
   workspace_id uuid not null references workspaces (id) on delete cascade,
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -127,7 +154,24 @@ create table if not exists conversations (
   contact_id uuid not null references contacts (id) on delete cascade,
   status text not null default 'open' check (status in ('open','closed','snoozed')),
   assignee_id uuid references auth.users (id) on delete set null,
+  unread int not null default 0,
   last_message_at timestamptz not null default now()
+);
+
+alter table conversations add column if not exists unread int not null default 0;
+
+-- Connected messaging channels per workspace (WhatsApp Cloud API number,
+-- Telegram bot, ...). Tokens are used ONLY by Edge Functions with the
+-- service-role key; move access_token into Supabase Vault for production.
+create table if not exists channels (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references workspaces (id) on delete cascade,
+  type text not null check (type in ('whatsapp','instagram','messenger','telegram')),
+  display_name text not null,
+  phone_number_id text,      -- WhatsApp Cloud API phone number id
+  waba_id text,              -- WhatsApp Business Account id (for templates)
+  access_token text,
+  created_at timestamptz not null default now()
 );
 
 -- kind = 'comment' rows are INTERNAL: only workspace members can read them,
@@ -181,9 +225,11 @@ create table if not exists notifications (
 
 -- Row level security: members only see their own workspace.
 alter table products enable row level security;
+alter table profiles enable row level security;
 alter table snippets enable row level security;
 alter table message_templates enable row level security;
 alter table notifications enable row level security;
+alter table channels enable row level security;
 alter table workspaces enable row level security;
 alter table workspace_members enable row level security;
 alter table lifecycle_stages enable row level security;
@@ -199,6 +245,15 @@ returns boolean language sql stable security definer as $$
   );
 $$;
 
+-- Role of the calling user inside a workspace ('owner','manager','doctor',
+-- 'agent' or null). Used to give managers more power than agents.
+create or replace function member_role(w uuid)
+returns text language sql stable security definer as $$
+  select role from workspace_members
+  where workspace_id = w and user_id = auth.uid()
+  limit 1;
+$$;
+
 -- drop-then-create makes this script safe to run again at any time
 drop policy if exists "signed-in users read products" on products;
 create policy "signed-in users read products" on products
@@ -212,9 +267,49 @@ drop policy if exists "members read membership" on workspace_members;
 create policy "members read membership" on workspace_members
   for select using (is_member(workspace_id));
 
+-- Only owners/managers can invite, change roles or remove members.
+drop policy if exists "managers manage membership" on workspace_members;
+create policy "managers manage membership" on workspace_members
+  for all
+  using (member_role(workspace_id) in ('owner', 'manager'))
+  with check (member_role(workspace_id) in ('owner', 'manager'));
+
+-- Profiles: any signed-in user can read display info; you edit only yours.
+drop policy if exists "read profiles" on profiles;
+create policy "read profiles" on profiles
+  for select using (auth.role() = 'authenticated');
+
+drop policy if exists "update own profile" on profiles;
+create policy "update own profile" on profiles
+  for update using (id = auth.uid());
+
+-- Everyone in the workspace can SEE the lifecycle; only owners/managers
+-- can add, rename, reorder or delete stages. (Moving a CONTACT between
+-- stages is an update on contacts, which every member can do.)
 drop policy if exists "members manage stages" on lifecycle_stages;
-create policy "members manage stages" on lifecycle_stages
-  for all using (is_member(workspace_id));
+drop policy if exists "members read stages" on lifecycle_stages;
+create policy "members read stages" on lifecycle_stages
+  for select using (is_member(workspace_id));
+
+drop policy if exists "managers write stages" on lifecycle_stages;
+create policy "managers write stages" on lifecycle_stages
+  for insert with check (member_role(workspace_id) in ('owner', 'manager'));
+
+drop policy if exists "managers update stages" on lifecycle_stages;
+create policy "managers update stages" on lifecycle_stages
+  for update using (member_role(workspace_id) in ('owner', 'manager'));
+
+drop policy if exists "managers delete stages" on lifecycle_stages;
+create policy "managers delete stages" on lifecycle_stages
+  for delete using (member_role(workspace_id) in ('owner', 'manager'));
+
+-- Channel credentials: visible/manageable only by owners & managers; Edge
+-- Functions use the service-role key and bypass RLS.
+drop policy if exists "managers manage channels" on channels;
+create policy "managers manage channels" on channels
+  for all
+  using (member_role(workspace_id) in ('owner', 'manager'))
+  with check (member_role(workspace_id) in ('owner', 'manager'));
 
 drop policy if exists "members manage contacts" on contacts;
 create policy "members manage contacts" on contacts

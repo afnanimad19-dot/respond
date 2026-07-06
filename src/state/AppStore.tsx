@@ -20,6 +20,7 @@ import {
   TeamMember
 } from '../lib/types';
 import { supabase, supabaseConfigured } from '../lib/supabase';
+import { db, loadWorkspace, newId, subscribeWorkspace } from '../lib/api';
 import {
   mockContacts,
   mockConversations,
@@ -84,8 +85,9 @@ interface Store {
 
 const Ctx = createContext<Store | null>(null);
 
-let seq = 1000;
-const nextId = (prefix: string) => `${prefix}${seq++}`;
+// Client-generated ids (uuid in live mode) so optimistic local state and the
+// database row share the same id.
+const nextId = (_prefix?: string) => newId();
 
 export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -98,7 +100,65 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<Message[]>(mockMessages);
   const [templates, setTemplates] = useState<MessageTemplate[]>(mockTemplates);
   const [notifications, setNotifications] = useState<NotificationItem[]>(mockNotifications);
-  const snippets = mockSnippets;
+  const [snippets, setSnippets] = useState(mockSnippets);
+
+  // Live mode = Supabase configured AND signed in with a real account.
+  const live = supabaseConfigured && !!session && !session.demo;
+  const wsId = session?.workspace.id ?? '';
+
+  // Load real workspace data + subscribe to Realtime when live.
+  useEffect(() => {
+    if (!live || !wsId) return;
+    let cancelled = false;
+
+    loadWorkspace(wsId).then((data) => {
+      if (!data || cancelled) return;
+      if (data.team.length) setTeam(data.team);
+      if (data.lifecycle.length) setLifecycle(data.lifecycle);
+      setContacts(data.contacts);
+      setConversations(data.conversations);
+      setMessages(data.messages);
+      setTemplates(data.templates);
+      setNotifications(data.notifications);
+      if (data.snippets.length) setSnippets(data.snippets);
+    });
+
+    const unsubscribe = subscribeWorkspace(wsId, {
+      onMessage: (m) =>
+        setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m])),
+      onConversation: (c) =>
+        setConversations((prev) => {
+          const i = prev.findIndex((x) => x.id === c.id);
+          if (i < 0) return [...prev, c];
+          const next = [...prev];
+          next[i] = c;
+          return next;
+        }),
+      onContact: (c) =>
+        setContacts((prev) => {
+          const i = prev.findIndex((x) => x.id === c.id);
+          if (i < 0) return [...prev, c];
+          const next = [...prev];
+          next[i] = c;
+          return next;
+        }),
+      onNotification: (n) =>
+        setNotifications((prev) => (prev.some((x) => x.id === n.id) ? prev : [n, ...prev])),
+      onTemplate: (t) =>
+        setTemplates((prev) => {
+          const i = prev.findIndex((x) => x.id === t.id);
+          if (i < 0) return [...prev, t];
+          const next = [...prev];
+          next[i] = t;
+          return next;
+        })
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [live, wsId]);
 
   useEffect(() => {
     const raw = localStorage.getItem(SESSION_KEY);
@@ -226,161 +286,229 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       mentions: string[] = []
     ) => {
       const at = new Date().toISOString();
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: nextId('m'),
-          conversationId,
-          kind,
-          from: session?.userId ?? 'me',
-          text,
-          at,
-          mentions
-        }
-      ]);
+      const senderId = session?.userId ?? 'me';
+      const msg: Message = {
+        id: nextId('m'),
+        conversationId,
+        kind,
+        from: senderId,
+        text,
+        at,
+        mentions
+      };
+      setMessages((prev) => [...prev, msg]);
       setConversations((prev) =>
         prev.map((c) => (c.id === conversationId ? { ...c, lastMessageAt: at } : c))
       );
+
+      const convo = conversations.find((c) => c.id === conversationId);
+      const contact = convo ? contacts.find((x) => x.id === convo.contactId) : undefined;
+
+      if (live) {
+        // Mirror to the database; whatsapp/telegram texts are delivered by
+        // Edge Functions. Internal comments never leave the workspace.
+        db.sendMessage(
+          wsId,
+          { id: msg.id, conversationId, kind, senderId, text, mentions },
+          contact?.channel
+        );
+      }
+
       // @-mentions inside internal comments raise a notification for the
       // mentioned teammates.
       if (kind === 'comment' && mentions.length) {
-        const convo = conversations.find((c) => c.id === conversationId);
-        const contact = convo ? contacts.find((x) => x.id === convo.contactId) : undefined;
         const who = session?.name ?? 'A teammate';
-        setNotifications((prev) => [
-          ...mentions.map((memberId) => ({
-            id: nextId('n'),
-            kind: 'mention' as const,
-            title: `${who} mentioned ${
-              memberId === (session?.userId ?? 'me') ? 'you' : 'a teammate'
-            } in ${contact?.name ?? 'a conversation'}`,
-            body: text,
-            at,
-            archived: false,
-            conversationId
-          })),
-          ...prev
-        ]);
+        const items: NotificationItem[] = mentions.map((memberId) => ({
+          id: nextId('n'),
+          kind: 'mention' as const,
+          title: `${who} mentioned ${
+            memberId === senderId ? 'you' : 'a teammate'
+          } in ${contact?.name ?? 'a conversation'}`,
+          body: text,
+          at,
+          archived: false,
+          conversationId
+        }));
+        setNotifications((prev) => [...items, ...prev]);
+        if (live) {
+          items.forEach((n, i) =>
+            db.addNotification(wsId, {
+              id: n.id,
+              userId: mentions[i],
+              kind: 'mention',
+              title: n.title,
+              body: n.body,
+              conversationId
+            })
+          );
+        }
       }
     },
-    [session, conversations, contacts]
+    [session, conversations, contacts, live, wsId]
   );
 
-  const markRead = useCallback((conversationId: string) => {
-    setConversations((prev) =>
-      prev.map((c) => (c.id === conversationId && c.unread ? { ...c, unread: 0 } : c))
-    );
-  }, []);
+  const markRead = useCallback(
+    (conversationId: string) => {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === conversationId && c.unread ? { ...c, unread: 0 } : c))
+      );
+      if (live) db.markRead(conversationId);
+    },
+    [live]
+  );
 
-  const setStatus = useCallback((conversationId: string, status: ConversationStatus) => {
-    setConversations((prev) =>
-      prev.map((c) => (c.id === conversationId ? { ...c, status } : c))
-    );
-  }, []);
+  const setStatus = useCallback(
+    (conversationId: string, status: ConversationStatus) => {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === conversationId ? { ...c, status } : c))
+      );
+      if (live) db.setStatus(conversationId, status);
+    },
+    [live]
+  );
 
-  const assign = useCallback((conversationId: string, memberId: string | null) => {
-    setConversations((prev) =>
-      prev.map((c) => (c.id === conversationId ? { ...c, assigneeId: memberId } : c))
-    );
-  }, []);
+  const assign = useCallback(
+    (conversationId: string, memberId: string | null) => {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === conversationId ? { ...c, assigneeId: memberId } : c))
+      );
+      if (live) db.assign(conversationId, memberId);
+    },
+    [live]
+  );
 
-  const setContactStage = useCallback((contactId: string, stageId: string | null) => {
-    setContacts((prev) =>
-      prev.map((c) => (c.id === contactId ? { ...c, lifecycleStageId: stageId } : c))
-    );
-  }, []);
+  const setContactStage = useCallback(
+    (contactId: string, stageId: string | null) => {
+      setContacts((prev) =>
+        prev.map((c) => (c.id === contactId ? { ...c, lifecycleStageId: stageId } : c))
+      );
+      if (live) db.setContactStage(contactId, stageId);
+    },
+    [live]
+  );
 
   const advanceStage = useCallback(
     (contactId: string) => {
-      setContacts((prev) =>
-        prev.map((c) => {
-          if (c.id !== contactId) return c;
-          const i = lifecycle.findIndex((s) => s.id === c.lifecycleStageId);
-          const next = lifecycle[i + 1] ?? lifecycle[0];
-          return { ...c, lifecycleStageId: next?.id ?? null };
-        })
-      );
+      const contact = contacts.find((c) => c.id === contactId);
+      if (!contact) return;
+      const i = lifecycle.findIndex((s) => s.id === contact.lifecycleStageId);
+      const next = lifecycle[i + 1] ?? lifecycle[0];
+      setContactStage(contactId, next?.id ?? null);
     },
-    [lifecycle]
+    [lifecycle, contacts, setContactStage]
   );
 
-  const addTemplate = useCallback((name: string, language: string, body: string) => {
-    setTemplates((prev) => [
-      ...prev,
-      { id: nextId('tpl'), name, language, body, status: 'pending' }
-    ]);
-  }, []);
+  const addTemplate = useCallback(
+    (name: string, language: string, body: string) => {
+      const t: MessageTemplate = { id: nextId('tpl'), name, language, body, status: 'pending' };
+      setTemplates((prev) => [...prev, t]);
+      if (live) db.addTemplate(wsId, t);
+    },
+    [live, wsId]
+  );
 
-  const archiveNotification = useCallback((id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, archived: true } : n))
-    );
-  }, []);
+  const archiveNotification = useCallback(
+    (id: string) => {
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, archived: true } : n))
+      );
+      if (live) db.archiveNotification(id);
+    },
+    [live]
+  );
 
   const archiveAllNotifications = useCallback(() => {
     setNotifications((prev) => prev.map((n) => ({ ...n, archived: true })));
-  }, []);
+    if (live) db.archiveAllNotifications();
+  }, [live]);
 
   const addStage = useCallback(
     (name: string, color: string, description?: string, emoji?: string) => {
-      setLifecycle((prev) => [...prev, { id: nextId('stage'), name, color, description, emoji }]);
+      const stage: LifecycleStage = { id: nextId('stage'), name, color, description, emoji };
+      setLifecycle((prev) => [...prev, stage]);
+      if (live) db.addStage(wsId, stage, lifecycle.length);
     },
-    []
+    [live, wsId, lifecycle.length]
   );
 
-  const updateStage = useCallback((id: string, patch: Partial<LifecycleStage>) => {
-    setLifecycle((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
-  }, []);
+  const updateStage = useCallback(
+    (id: string, patch: Partial<LifecycleStage>) => {
+      setLifecycle((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+      if (live) db.updateStage(id, patch);
+    },
+    [live]
+  );
 
-  const removeStage = useCallback((id: string) => {
-    setLifecycle((prev) => prev.filter((s) => s.id !== id));
-    setContacts((prev) =>
-      prev.map((c) => (c.lifecycleStageId === id ? { ...c, lifecycleStageId: null } : c))
-    );
-  }, []);
+  const removeStage = useCallback(
+    (id: string) => {
+      setLifecycle((prev) => prev.filter((s) => s.id !== id));
+      setContacts((prev) =>
+        prev.map((c) => (c.lifecycleStageId === id ? { ...c, lifecycleStageId: null } : c))
+      );
+      if (live) db.removeStage(id);
+    },
+    [live]
+  );
 
-  const moveStage = useCallback((id: string, dir: -1 | 1) => {
-    setLifecycle((prev) => {
-      const i = prev.findIndex((s) => s.id === id);
+  const moveStage = useCallback(
+    (id: string, dir: -1 | 1) => {
+      const i = lifecycle.findIndex((s) => s.id === id);
       const j = i + dir;
-      if (i < 0 || j < 0 || j >= prev.length) return prev;
-      const next = [...prev];
+      if (i < 0 || j < 0 || j >= lifecycle.length) return;
+      const next = [...lifecycle];
       [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
-  }, []);
+      setLifecycle(next);
+      if (live) db.saveStageOrder(next);
+    },
+    [lifecycle, live]
+  );
 
-  const inviteMember = useCallback((email: string, role: Role) => {
-    const name = email
-      .split('@')[0]
-      .split(/[._-]/)
-      .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-      .join(' ');
-    const palette = ['#0A84FF', '#30B0C7', '#FF9F0A', '#34C759', '#FF6482', '#5E9BF7'];
-    setTeam((prev) => [
-      ...prev,
-      {
-        id: nextId('member'),
-        name,
-        email: email.trim().toLowerCase(),
-        role,
-        online: false,
-        color: palette[prev.length % palette.length],
-        pending: true
-      }
-    ]);
-  }, []);
+  const inviteMember = useCallback(
+    (email: string, role: Role) => {
+      const cleaned = email.trim().toLowerCase();
+      const name = cleaned
+        .split('@')[0]
+        .split(/[._-]/)
+        .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+        .join(' ');
+      const palette = ['#1F6BFF', '#17A2B8', '#F79009', '#12B76A', '#F6668D', '#5E9BF7'];
+      setTeam((prev) => [
+        ...prev,
+        {
+          id: nextId('member'),
+          name,
+          email: cleaned,
+          role,
+          online: false,
+          color: palette[prev.length % palette.length],
+          pending: true
+        }
+      ]);
+      // Live: the `invite` Edge Function sends the actual email and creates
+      // the pending membership (owner/manager only, enforced server-side).
+      if (live) db.invite(wsId, cleaned, role);
+    },
+    [live, wsId]
+  );
 
-  const setMemberRole = useCallback((id: string, role: Role) => {
-    setTeam((prev) => prev.map((m) => (m.id === id ? { ...m, role } : m)));
-  }, []);
+  const setMemberRole = useCallback(
+    (id: string, role: Role) => {
+      setTeam((prev) => prev.map((m) => (m.id === id ? { ...m, role } : m)));
+      if (live) db.setMemberRole(wsId, id, role);
+    },
+    [live, wsId]
+  );
 
-  const removeMember = useCallback((id: string) => {
-    setTeam((prev) => prev.filter((m) => m.id !== id));
-    setConversations((prev) =>
-      prev.map((c) => (c.assigneeId === id ? { ...c, assigneeId: null } : c))
-    );
-  }, []);
+  const removeMember = useCallback(
+    (id: string) => {
+      setTeam((prev) => prev.filter((m) => m.id !== id));
+      setConversations((prev) =>
+        prev.map((c) => (c.assigneeId === id ? { ...c, assigneeId: null } : c))
+      );
+      if (live) db.removeMember(wsId, id);
+    },
+    [live, wsId]
+  );
 
   const value = useMemo<Store>(
     () => ({

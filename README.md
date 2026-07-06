@@ -67,6 +67,27 @@ mobile-only by design — on a desktop it renders as a centered phone column.
    workspace, and internal comments (`messages.kind = 'comment'`) are never
    delivered to the contact's channel.
 
+## Going live (backend)
+
+The whole backend is in this repo, ready to deploy:
+
+1. **Database** — run `supabase/schema.sql` in the shared Supabase project
+   (idempotent — safe to re-run; it upgrades older databases in place).
+2. **App** — set `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` in `.env`.
+   Live mode activates automatically: real login, real workspace data,
+   Realtime sync; demo mode remains the fallback without keys.
+3. **Edge Functions** — `supabase functions deploy invite whatsapp-webhook
+   whatsapp-send whatsapp-templates telegram-webhook telegram-send`, then
+   `supabase secrets set WHATSAPP_VERIFY_TOKEN=<random string>`.
+4. **WhatsApp** — in the Meta app, point the webhook at
+   `https://<ref>.functions.supabase.co/whatsapp-webhook` with that verify
+   token, and insert the workspace's number into the `channels` table
+   (`type='whatsapp'`, `phone_number_id`, `waba_id`, `access_token`).
+   Click-to-WhatsApp ad leads arrive with ad attribution automatically.
+5. **Install on phones** — the app is a PWA (Add to Home Screen works
+   today); `capacitor.config.ts` is ready for native iOS/Android builds
+   when store distribution is wanted (see `ROADMAP.md`).
+
 ## Stack
 
 React 18 + TypeScript + Vite, `@supabase/supabase-js`, no UI framework — the
